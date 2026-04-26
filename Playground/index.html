@@ -1,0 +1,2374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>线条迷宫原型</title>
+  <style>
+    :root {
+      --bg: #efe6d6;
+      --panel: rgba(255, 250, 242, 0.96);
+      --ink: #1f1f1f;
+      --line: #222;
+      --player: #d45f3e;
+      --key: #d79c27;
+      --door: #2f7d57;
+      --door-locked: #8e8e8e;
+      --phase: #4466dd;
+      --chisel: #b55f22;
+      --hammer: #7c4cc7;
+      --hint: rgba(31, 31, 31, 0.72);
+      --soft: rgba(31, 31, 31, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgba(255, 255, 255, 0.8), transparent 38%),
+        linear-gradient(135deg, #e5d5bc, var(--bg));
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .app {
+      width: min(1100px, 96vw);
+      padding: 20px;
+      border-radius: 28px;
+      background: var(--panel);
+      border: 2px solid rgba(31, 31, 31, 0.08);
+      box-shadow: 0 24px 70px rgba(77, 53, 26, 0.14);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 760px) minmax(260px, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: 0.04em;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--hint);
+      font-size: 15px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .controls button.secondary {
+      padding: 10px 14px;
+      font-size: 14px;
+      opacity: 0.92;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      background: var(--ink);
+      color: #fff;
+      cursor: pointer;
+      font-size: 15px;
+      transition: transform 0.18s ease, opacity 0.18s ease;
+      touch-action: manipulation;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.92;
+    }
+
+    button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .board {
+      position: relative;
+      padding: 0;
+      border-radius: 0;
+      overflow: hidden;
+      border: 2px solid rgba(31, 31, 31, 0.08);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 246, 235, 0.92));
+    }
+
+    canvas {
+      width: 100%;
+      display: block;
+      border-radius: 0;
+      background:
+        linear-gradient(180deg, rgba(255, 252, 247, 1), rgba(249, 239, 224, 1));
+    }
+
+    .panel {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(31, 31, 31, 0.08);
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .status {
+      margin: 0;
+      min-height: 42px;
+      color: var(--player);
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .meta,
+    .inventory,
+    .help {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--hint);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(31, 31, 31, 0.06);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .inventory-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(31, 31, 31, 0.04);
+      border: 1px solid transparent;
+    }
+
+    .inventory-item.active {
+      border-color: rgba(31, 31, 31, 0.2);
+      background: rgba(255, 240, 214, 0.95);
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+
+    .dim {
+      opacity: 0.42;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .level-picker {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(31, 31, 31, 0.42);
+      z-index: 20;
+    }
+
+    .level-picker.open {
+      display: flex;
+    }
+
+    .level-picker-panel {
+      width: min(760px, 100%);
+      max-height: min(80vh, 720px);
+      overflow: auto;
+      padding: 18px;
+      border-radius: 24px;
+      background: rgba(255, 250, 242, 0.98);
+      border: 1px solid rgba(31, 31, 31, 0.08);
+      box-shadow: 0 20px 60px rgba(31, 31, 31, 0.18);
+    }
+
+    .level-picker-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .level-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .level-card-button {
+      width: 100%;
+      text-align: left;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(31, 31, 31, 0.08);
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--ink);
+    }
+
+    .level-card-button.current {
+      background: rgba(255, 239, 210, 0.96);
+      border-color: rgba(31, 31, 31, 0.18);
+    }
+
+    .level-card-button strong,
+    .level-card-button span {
+      display: block;
+    }
+
+    .level-card-button span {
+      margin-top: 6px;
+      color: var(--hint);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .result-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(31, 31, 31, 0.46);
+      z-index: 30;
+    }
+
+    .result-modal.open {
+      display: flex;
+    }
+
+    .result-panel {
+      width: min(420px, 100%);
+      padding: 22px;
+      border-radius: 24px;
+      background: rgba(255, 250, 242, 0.98);
+      border: 1px solid rgba(31, 31, 31, 0.08);
+      box-shadow: 0 20px 60px rgba(31, 31, 31, 0.18);
+      text-align: center;
+    }
+
+    .result-panel h2 {
+      margin: 0 0 10px;
+      font-size: 28px;
+    }
+
+    .result-time {
+      margin: 0 0 18px;
+      font-size: 18px;
+      color: var(--player);
+      font-weight: 700;
+    }
+
+    .result-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .mobile-controls {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: end;
+      margin-top: 10px;
+    }
+
+    .mobile-control-layout {
+      display: contents;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 48px);
+      grid-template-rows: repeat(3, 48px);
+      gap: 6px;
+      justify-content: start;
+    }
+
+    .dpad .spacer {
+      visibility: hidden;
+    }
+
+    .mobile-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 8px 10px;
+      border-radius: 16px;
+      background: rgba(31, 31, 31, 0.72);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      font-weight: 700;
+      font-size: 15px;
+      box-shadow: 0 8px 20px rgba(31, 31, 31, 0.16);
+    }
+
+    .mobile-actions,
+    .mobile-items {
+      display: grid;
+      gap: 6px;
+    }
+
+    .mobile-items {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mobile-actions {
+      justify-self: end;
+      width: min(146px, 38vw);
+    }
+
+    .mobile-item.active {
+      background: rgba(255, 240, 214, 0.98);
+      color: var(--ink);
+      outline: 2px solid rgba(31, 31, 31, 0.16);
+    }
+
+    .mobile-item.dim {
+      opacity: 0.5;
+    }
+
+    .mobile-hud {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .mobile-hud-inner {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mobile-hud-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mobile-chip {
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(255, 250, 242, 0.9);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 8px 24px rgba(31, 31, 31, 0.1);
+    }
+
+    .focus-mode .panel {
+      display: none !important;
+    }
+
+    .focus-mode .subtitle,
+    .focus-mode #levelPickerBtn,
+    .focus-mode #nextBtn,
+    .focus-mode #restartBtn,
+    .focus-mode .mobile-hud {
+      display: none !important;
+    }
+
+    .focus-mode .title-block {
+      display: none;
+    }
+
+    .focus-mode .topbar {
+      justify-content: flex-end;
+      margin-bottom: 8px;
+    }
+
+    .announcer {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      display: grid;
+      gap: 10px;
+      z-index: 40;
+      pointer-events: none;
+    }
+
+    .announcement {
+      min-width: 220px;
+      max-width: 320px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(28, 28, 28, 0.88);
+      color: #fff8ee;
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      animation: announcement-in 220ms ease;
+    }
+
+    .announcement strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    .announcement span {
+      display: block;
+      font-size: 13px;
+      line-height: 1.45;
+      color: rgba(255, 248, 238, 0.86);
+    }
+
+    .announcement.pickup {
+      border-left: 4px solid #f0b86a;
+    }
+
+    .announcement.use {
+      border-left: 4px solid #7c4cc7;
+    }
+
+    .announcement.key {
+      border-left: 4px solid #2f7d57;
+    }
+
+    @keyframes announcement-in {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 14px;
+        min-height: 100dvh;
+        display: block;
+      }
+
+      .app {
+        width: 100%;
+        padding: 14px;
+        border-radius: 22px;
+        min-height: calc(100dvh - 28px);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .topbar {
+        gap: 10px;
+      }
+
+      .topbar .controls {
+        gap: 8px;
+      }
+
+      .title-block h1 {
+        font-size: 22px;
+      }
+
+      .subtitle {
+        display: none;
+      }
+
+      .board {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 0;
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .meta {
+        gap: 10px;
+      }
+
+      .mobile-controls {
+        display: grid;
+      }
+
+      .mobile-hud {
+        display: block;
+      }
+    }
+
+    @media (min-width: 901px) {
+      .mobile-controls,
+      .mobile-hud {
+        display: none !important;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .controls {
+        width: 100%;
+      }
+
+      .controls button {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 10px 10px;
+        font-size: 13px;
+      }
+
+      .controls button.secondary {
+        flex: 0 1 auto;
+        padding: 8px 11px;
+        font-size: 12px;
+      }
+
+      .dpad {
+        grid-template-columns: repeat(3, 44px);
+        grid-template-rows: repeat(3, 44px);
+        gap: 5px;
+      }
+
+      .mobile-btn {
+        min-height: 42px;
+        padding: 8px;
+        font-size: 13px;
+      }
+
+      .mobile-actions {
+        width: min(124px, 34vw);
+      }
+
+      .mobile-chip {
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+
+      .focus-mode .app {
+        padding-top: 10px;
+      }
+
+      .focus-mode .controls button {
+        flex: 0 0 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div class="title-block">
+        <h1>线条迷宫原型</h1>
+        <p class="subtitle">前四关教学版：钥匙开门、穿墙、破一小段墙、打穿整面墙。</p>
+      </div>
+      <div class="controls">
+        <button id="focusModeBtn">闯关模式</button>
+        <button id="levelPickerBtn" class="secondary">选关</button>
+        <button id="restartBtn" class="secondary">重开本关</button>
+        <button id="nextBtn">下一关</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="board">
+        <canvas id="mazeCanvas" width="760" height="760"></canvas>
+      </section>
+
+      <aside class="panel">
+        <section class="card">
+          <h2 id="levelTitle">关卡加载中</h2>
+          <p class="status" id="status">正在准备关卡...</p>
+          <div class="meta">
+            <div><span class="pill">目标</span><span id="goalText"></span></div>
+            <div><span class="pill">当前朝向</span><span id="facingText"></span></div>
+            <div><span class="pill">钥匙状态</span><span id="keyText"></span></div>
+            <div><span class="pill">本关用时</span><span id="timerText">00:00</span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>道具栏</h2>
+          <div class="inventory" id="inventory"></div>
+        </section>
+
+        <section class="card">
+          <h2>操作说明</h2>
+          <div class="help">
+            <div>移动：方向键或 WASD</div>
+            <div>切换道具：1 / 2 / 3</div>
+            <div>使用当前道具：空格</div>
+            <div id="toolHelpText">幻越符：面对一堵墙时按空格，翻过去一次</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>图例</h2>
+          <div class="legend">
+            <span class="pill"><span class="swatch" style="background: var(--player)"></span>玩家</span>
+            <span class="pill"><span class="swatch" style="background: var(--key)"></span>钥匙</span>
+            <span class="pill"><span class="swatch" style="background: var(--door)"></span>门</span>
+            <span class="pill"><span class="swatch" style="background: var(--phase)"></span>幻越符</span>
+            <span class="pill"><span class="swatch" style="background: var(--chisel)"></span>裂隙钉</span>
+            <span class="pill"><span class="swatch" style="background: var(--hammer)"></span>破城锤</span>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="mobile-hud" id="mobileHud">
+      <div class="mobile-hud-inner">
+        <div class="mobile-hud-row">
+          <span class="mobile-chip" id="mobileLevelChip">第 1 关</span>
+          <span class="mobile-chip" id="mobileTimerChip">00:00</span>
+        </div>
+        <div class="mobile-hud-row">
+          <span class="mobile-chip" id="mobileKeyChip">钥匙：未拿到</span>
+          <span class="mobile-chip" id="mobileItemChip">当前：幻越符 x0</span>
+        </div>
+      </div>
+    </div>
+
+    <section class="mobile-controls" id="mobileControls">
+      <div class="mobile-control-layout">
+        <div class="dpad">
+          <span class="spacer"></span>
+          <button class="mobile-btn" data-move="up" type="button">上</button>
+          <span class="spacer"></span>
+          <button class="mobile-btn" data-move="left" type="button">左</button>
+          <button class="mobile-btn" data-use="item" type="button">用</button>
+          <button class="mobile-btn" data-move="right" type="button">右</button>
+          <span class="spacer"></span>
+          <button class="mobile-btn" data-move="down" type="button">下</button>
+          <span class="spacer"></span>
+        </div>
+        <div class="mobile-actions">
+          <div class="mobile-items" id="mobileItemButtons">
+            <button class="mobile-btn mobile-item" data-item="phase" type="button">幻越</button>
+            <button class="mobile-btn mobile-item" data-item="chisel" type="button">裂隙</button>
+            <button class="mobile-btn mobile-item" data-item="hammer" type="button">破城</button>
+          </div>
+          <button class="mobile-btn" id="mobileFocusBtn" type="button">专注</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="level-picker" id="levelPicker">
+    <div class="level-picker-panel">
+      <div class="level-picker-head">
+        <div>
+          <h2 style="margin: 0;">关卡选择</h2>
+          <p style="margin: 6px 0 0; color: rgba(31, 31, 31, 0.68); font-size: 14px;">所有关卡默认全部解锁，点一下就能进入。</p>
+        </div>
+        <button id="closeLevelPickerBtn">关闭</button>
+      </div>
+      <div class="level-grid" id="levelGrid"></div>
+    </div>
+  </div>
+
+  <div class="result-modal" id="resultModal">
+    <div class="result-panel">
+      <h2>本关通过</h2>
+      <p class="result-time" id="resultTimeText">用时 00:00</p>
+      <div class="result-actions">
+        <button id="resultNextBtn" type="button">下一关</button>
+        <button id="resultCloseBtn" type="button" class="ghost">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="announcer" id="announcer"></div>
+
+  <script>
+    const canvas = document.getElementById("mazeCanvas");
+    const ctx = canvas.getContext("2d");
+    const statusText = document.getElementById("status");
+    const levelTitle = document.getElementById("levelTitle");
+    const goalText = document.getElementById("goalText");
+    const facingText = document.getElementById("facingText");
+    const keyText = document.getElementById("keyText");
+    const timerText = document.getElementById("timerText");
+    const toolHelpText = document.getElementById("toolHelpText");
+    const inventoryEl = document.getElementById("inventory");
+    const mobileLevelChip = document.getElementById("mobileLevelChip");
+    const mobileTimerChip = document.getElementById("mobileTimerChip");
+    const mobileKeyChip = document.getElementById("mobileKeyChip");
+    const mobileItemChip = document.getElementById("mobileItemChip");
+    const appEl = document.querySelector(".app");
+    const topbarEl = document.querySelector(".topbar");
+    const boardEl = document.querySelector(".board");
+    const focusModeBtn = document.getElementById("focusModeBtn");
+    const mobileFocusBtn = document.getElementById("mobileFocusBtn");
+    const levelPickerBtn = document.getElementById("levelPickerBtn");
+    const restartBtn = document.getElementById("restartBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const mobileControls = document.getElementById("mobileControls");
+    const mobileItemButtons = Array.from(document.querySelectorAll("[data-item]"));
+    const mobileMoveButtons = Array.from(document.querySelectorAll("[data-move]"));
+    const mobileUseButtons = Array.from(document.querySelectorAll("[data-use]"));
+    const levelPicker = document.getElementById("levelPicker");
+    const closeLevelPickerBtn = document.getElementById("closeLevelPickerBtn");
+    const levelGrid = document.getElementById("levelGrid");
+    const resultModal = document.getElementById("resultModal");
+    const resultTimeText = document.getElementById("resultTimeText");
+    const resultNextBtn = document.getElementById("resultNextBtn");
+    const resultCloseBtn = document.getElementById("resultCloseBtn");
+    const announcer = document.getElementById("announcer");
+
+    const DEFAULT_GRID = 7;
+    const INNER_PADDING = 18;
+
+    const ITEM_META = {
+      phase: { name: "幻越符", color: "#4466dd", hotkey: "1" },
+      chisel: { name: "裂隙钉", color: "#b55f22", hotkey: "2" },
+      hammer: { name: "破城锤", color: "#7c4cc7", hotkey: "3" }
+    };
+
+    const TOOL_HELP = {
+      phase: "幻越符：面对一堵墙时按空格，翻过去一次，墙本身不会消失。",
+      chisel: "裂隙钉：面对墙按空格，敲掉当前这一小段单位墙。",
+      hammer: "破城锤：面对长墙按空格，打碎当前整段连续长墙。"
+    };
+
+    const LEVELS = [
+{
+  id: 1,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 5,
+  rows: 5,
+  start: { x: 0, y: 0 },
+  key: { x: 4, y: 4 },
+  door: { x: 4, y: 0 },
+  pickups: [
+    
+  ],
+  walls: [
+    { x: 1, y: 2, orientation: "h", length: 3 },
+    { x: 1, y: 3, orientation: "h", length: 3 },
+    { x: 1, y: 0, orientation: "v", length: 2 },
+    { x: 1, y: 3, orientation: "v", length: 2 },
+    { x: 4, y: 0, orientation: "v", length: 2 },
+    { x: 4, y: 3, orientation: "v", length: 2 }
+  ]
+},
+{
+  id: 2,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 5,
+  rows: 5,
+  start: { x: 0, y: 0 },
+  key: { x: 4, y: 4 },
+  door: { x: 4, y: 0 },
+  pickups: [
+    { type: "phase", x: 0, y: 1 }
+  ],
+  walls: [
+    { x: 1, y: 2, orientation: "h", length: 3 },
+    { x: 1, y: 3, orientation: "h", length: 3 },
+    { x: 1, y: 0, orientation: "v", length: 2 },
+    { x: 1, y: 3, orientation: "v", length: 2 },
+    { x: 3, y: 2, orientation: "v", length: 1 },
+    { x: 4, y: 0, orientation: "v", length: 2 },
+    { x: 4, y: 3, orientation: "v", length: 2 }
+  ]
+},
+{
+  id: 3,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 5,
+  rows: 5,
+  start: { x: 0, y: 0 },
+  key: { x: 0, y: 4 },
+  door: { x: 4, y: 0 },
+  pickups: [
+    { type: "chisel", x: 0, y: 1 }
+  ],
+  walls: [
+    { x: 1, y: 2, orientation: "h", length: 3 },
+    { x: 1, y: 3, orientation: "h", length: 3 },
+    { x: 1, y: 0, orientation: "v", length: 2 },
+    { x: 1, y: 3, orientation: "v", length: 2 },
+    { x: 3, y: 2, orientation: "v", length: 1 },
+    { x: 4, y: 0, orientation: "v", length: 2 },
+    { x: 4, y: 3, orientation: "v", length: 2 }
+  ]
+},
+{
+  id: 4,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 5,
+  rows: 5,
+  start: { x: 0, y: 0 },
+  key: { x: 0, y: 4 },
+  door: { x: 4, y: 0 },
+  pickups: [
+    { type: "hammer", x: 0, y: 1 }
+  ],
+  walls: [
+    { x: 1, y: 1, orientation: "h", length: 3 },
+    { x: 1, y: 3, orientation: "h", length: 3 },
+    { x: 2, y: 4, orientation: "h", length: 2 },
+    { x: 1, y: 0, orientation: "v", length: 1 },
+    { x: 1, y: 3, orientation: "v", length: 2 },
+    { x: 2, y: 1, orientation: "v", length: 4 },
+    { x: 4, y: 0, orientation: "v", length: 1 },
+    { x: 4, y: 3, orientation: "v", length: 2 }
+  ]
+},
+{
+  id: 5,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 5,
+  rows: 5,
+  start: { x: 0, y: 0 },
+  key: { x: 0, y: 4 },
+  door: { x: 4, y: 0 },
+  pickups: [
+    { type: "hammer", x: 0, y: 1 }
+  ],
+  walls: [
+    { x: 2, y: 1, orientation: "h", length: 1 },
+    { x: 1, y: 2, orientation: "h", length: 3 },
+    { x: 1, y: 3, orientation: "h", length: 3 },
+    { x: 1, y: 0, orientation: "v", length: 2 },
+    { x: 1, y: 3, orientation: "v", length: 2 },
+    { x: 2, y: 1, orientation: "v", length: 4 },
+    { x: 3, y: 1, orientation: "v", length: 4 },
+    { x: 4, y: 0, orientation: "v", length: 2 },
+    { x: 4, y: 3, orientation: "v", length: 2 }
+  ]
+},
+{
+  id: 6,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 5,
+  rows: 5,
+  start: { x: 0, y: 0 },
+  key: { x: 4, y: 0 },
+  door: { x: 0, y: 4 },
+  pickups: [
+    { type: "phase", x: 1, y: 0 },
+    { type: "chisel", x: 1, y: 1 }
+  ],
+  walls: [
+    { x: 0, y: 2, orientation: "h", length: 4 },
+    { x: 1, y: 3, orientation: "h", length: 3 },
+    { x: 1, y: 3, orientation: "v", length: 2 },
+    { x: 3, y: 0, orientation: "v", length: 3 },
+    { x: 4, y: 0, orientation: "v", length: 2 },
+    { x: 4, y: 3, orientation: "v", length: 2 }
+  ]
+},
+      {
+  id: 7,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  start: { x: 0, y: 5 },
+  key: { x: 6, y: 2 },
+  door: { x: 11, y: 6 },
+  pickups: [
+    { type: "hammer", x: 3, y: 5 },
+    { type: "chisel", x: 2, y: 5 }
+  ],
+  walls: [
+    { x: 1, y: 1, orientation: "h", length: 8 },
+    { x: 10, y: 1, orientation: "h", length: 1 },
+    { x: 1, y: 2, orientation: "h", length: 1 },
+    { x: 3, y: 2, orientation: "h", length: 1 },
+    { x: 5, y: 2, orientation: "h", length: 6 },
+    { x: 2, y: 3, orientation: "h", length: 1 },
+    { x: 6, y: 3, orientation: "h", length: 1 },
+    { x: 8, y: 3, orientation: "h", length: 1 },
+    { x: 6, y: 4, orientation: "h", length: 2 },
+    { x: 10, y: 4, orientation: "h", length: 2 },
+    { x: 0, y: 5, orientation: "h", length: 4 },
+    { x: 6, y: 5, orientation: "h", length: 4 },
+    { x: 11, y: 5, orientation: "h", length: 1 },
+    { x: 2, y: 6, orientation: "h", length: 2 },
+    { x: 7, y: 6, orientation: "h", length: 1 },
+    { x: 9, y: 6, orientation: "h", length: 2 },
+    { x: 2, y: 7, orientation: "h", length: 1 },
+    { x: 4, y: 7, orientation: "h", length: 1 },
+    { x: 7, y: 7, orientation: "h", length: 2 },
+    { x: 10, y: 7, orientation: "h", length: 1 },
+    { x: 4, y: 8, orientation: "h", length: 2 },
+    { x: 7, y: 8, orientation: "h", length: 1 },
+    { x: 9, y: 8, orientation: "h", length: 2 },
+    { x: 0, y: 9, orientation: "h", length: 2 },
+    { x: 3, y: 9, orientation: "h", length: 2 },
+    { x: 6, y: 9, orientation: "h", length: 1 },
+    { x: 8, y: 9, orientation: "h", length: 3 },
+    { x: 1, y: 10, orientation: "h", length: 3 },
+    { x: 5, y: 10, orientation: "h", length: 1 },
+    { x: 7, y: 10, orientation: "h", length: 1 },
+    { x: 10, y: 10, orientation: "h", length: 2 },
+    { x: 3, y: 11, orientation: "h", length: 2 },
+    { x: 6, y: 11, orientation: "h", length: 1 },
+    { x: 8, y: 11, orientation: "h", length: 1 },
+    { x: 10, y: 11, orientation: "h", length: 2 },
+    { x: 1, y: 2, orientation: "v", length: 2 },
+    { x: 1, y: 6, orientation: "v", length: 3 },
+    { x: 1, y: 10, orientation: "v", length: 2 },
+    { x: 2, y: 1, orientation: "v", length: 1 },
+    { x: 2, y: 3, orientation: "v", length: 2 },
+    { x: 2, y: 7, orientation: "v", length: 2 },
+    { x: 2, y: 10, orientation: "v", length: 2 },
+    { x: 3, y: 3, orientation: "v", length: 1 },
+    { x: 3, y: 6, orientation: "v", length: 3 },
+    { x: 4, y: 1, orientation: "v", length: 3 },
+    { x: 4, y: 6, orientation: "v", length: 2 },
+    { x: 4, y: 9, orientation: "v", length: 1 },
+    { x: 5, y: 2, orientation: "v", length: 5 },
+    { x: 5, y: 9, orientation: "v", length: 2 },
+    { x: 6, y: 3, orientation: "v", length: 5 },
+    { x: 6, y: 9, orientation: "v", length: 1 },
+    { x: 7, y: 2, orientation: "v", length: 2 },
+    { x: 7, y: 8, orientation: "v", length: 3 },
+    { x: 8, y: 3, orientation: "v", length: 1 },
+    { x: 8, y: 5, orientation: "v", length: 1 },
+    { x: 8, y: 7, orientation: "v", length: 2 },
+    { x: 8, y: 10, orientation: "v", length: 2 },
+    { x: 9, y: 0, orientation: "v", length: 1 },
+    { x: 9, y: 2, orientation: "v", length: 3 },
+    { x: 9, y: 6, orientation: "v", length: 2 },
+    { x: 9, y: 9, orientation: "v", length: 1 },
+    { x: 10, y: 2, orientation: "v", length: 1 },
+    { x: 10, y: 4, orientation: "v", length: 3 },
+    { x: 11, y: 0, orientation: "v", length: 3 },
+    { x: 11, y: 5, orientation: "v", length: 1 },
+    { x: 11, y: 7, orientation: "v", length: 1 }
+  ]
+},
+{
+  id: 8,
+  title: "自定义手绘关卡",
+  goal: "先拿到钥匙，再前往出口门。",
+  teaching: "这是通过图形化编辑器手绘出来的关卡。",
+  cols: 15,
+  rows: 15,
+  start: { x: 0, y: 7 },
+  key: { x: 14, y: 7 },
+  door: { x: 7, y: 7 },
+  pickups: [
+    { type: "phase", x: 0, y: 8 },
+    { type: "hammer", x: 0, y: 6 },
+    { type: "chisel", x: 1, y: 7 }
+  ],
+  walls: [
+    { x: 1, y: 1, orientation: "h", length: 2 },
+    { x: 4, y: 1, orientation: "h", length: 1 },
+    { x: 7, y: 1, orientation: "h", length: 1 },
+    { x: 9, y: 1, orientation: "h", length: 4 },
+    { x: 1, y: 2, orientation: "h", length: 10 },
+    { x: 12, y: 2, orientation: "h", length: 2 },
+    { x: 4, y: 3, orientation: "h", length: 2 },
+    { x: 8, y: 3, orientation: "h", length: 1 },
+    { x: 10, y: 3, orientation: "h", length: 4 },
+    { x: 2, y: 4, orientation: "h", length: 3 },
+    { x: 8, y: 4, orientation: "h", length: 5 },
+    { x: 1, y: 5, orientation: "h", length: 3 },
+    { x: 5, y: 5, orientation: "h", length: 3 },
+    { x: 9, y: 5, orientation: "h", length: 3 },
+    { x: 9, y: 6, orientation: "h", length: 3 },
+    { x: 2, y: 7, orientation: "h", length: 6 },
+    { x: 9, y: 7, orientation: "h", length: 3 },
+    { x: 4, y: 8, orientation: "h", length: 2 },
+    { x: 7, y: 8, orientation: "h", length: 1 },
+    { x: 9, y: 8, orientation: "h", length: 3 },
+    { x: 13, y: 8, orientation: "h", length: 1 },
+    { x: 0, y: 9, orientation: "h", length: 1 },
+    { x: 11, y: 9, orientation: "h", length: 3 },
+    { x: 1, y: 10, orientation: "h", length: 1 },
+    { x: 6, y: 10, orientation: "h", length: 1 },
+    { x: 12, y: 10, orientation: "h", length: 2 },
+    { x: 2, y: 11, orientation: "h", length: 7 },
+    { x: 11, y: 11, orientation: "h", length: 2 },
+    { x: 2, y: 12, orientation: "h", length: 9 },
+    { x: 13, y: 12, orientation: "h", length: 2 },
+    { x: 0, y: 13, orientation: "h", length: 1 },
+    { x: 3, y: 13, orientation: "h", length: 1 },
+    { x: 5, y: 13, orientation: "h", length: 7 },
+    { x: 1, y: 14, orientation: "h", length: 6 },
+    { x: 8, y: 14, orientation: "h", length: 7 },
+    { x: 1, y: 0, orientation: "v", length: 1 },
+    { x: 1, y: 2, orientation: "v", length: 5 },
+    { x: 1, y: 8, orientation: "v", length: 1 },
+    { x: 1, y: 10, orientation: "v", length: 3 },
+    { x: 2, y: 0, orientation: "v", length: 1 },
+    { x: 2, y: 2, orientation: "v", length: 5 },
+    { x: 2, y: 8, orientation: "v", length: 2 },
+    { x: 2, y: 11, orientation: "v", length: 2 },
+    { x: 3, y: 1, orientation: "v", length: 3 },
+    { x: 3, y: 6, orientation: "v", length: 5 },
+    { x: 4, y: 1, orientation: "v", length: 1 },
+    { x: 4, y: 5, orientation: "v", length: 2 },
+    { x: 4, y: 8, orientation: "v", length: 6 },
+    { x: 5, y: 0, orientation: "v", length: 2 },
+    { x: 5, y: 3, orientation: "v", length: 4 },
+    { x: 5, y: 8, orientation: "v", length: 5 },
+    { x: 6, y: 0, orientation: "v", length: 11 },
+    { x: 7, y: 2, orientation: "v", length: 2 },
+    { x: 7, y: 5, orientation: "v", length: 5 },
+    { x: 8, y: 1, orientation: "v", length: 1 },
+    { x: 8, y: 3, orientation: "v", length: 4 },
+    { x: 8, y: 8, orientation: "v", length: 3 },
+    { x: 9, y: 0, orientation: "v", length: 1 },
+    { x: 9, y: 3, orientation: "v", length: 4 },
+    { x: 9, y: 8, orientation: "v", length: 2 },
+    { x: 9, y: 11, orientation: "v", length: 3 },
+    { x: 10, y: 2, orientation: "v", length: 1 },
+    { x: 10, y: 5, orientation: "v", length: 10 },
+    { x: 11, y: 0, orientation: "v", length: 1 },
+    { x: 11, y: 9, orientation: "v", length: 5 },
+    { x: 12, y: 5, orientation: "v", length: 3 },
+    { x: 12, y: 10, orientation: "v", length: 1 },
+    { x: 12, y: 12, orientation: "v", length: 2 },
+    { x: 13, y: 1, orientation: "v", length: 1 },
+    { x: 13, y: 4, orientation: "v", length: 4 },
+    { x: 13, y: 11, orientation: "v", length: 3 },
+    { x: 14, y: 1, orientation: "v", length: 1 },
+    { x: 14, y: 3, orientation: "v", length: 4 },
+    { x: 14, y: 8, orientation: "v", length: 1 },
+    { x: 14, y: 10, orientation: "v", length: 4 }
+  ]
+}
+
+    ];
+
+    let levelIndex = 0;
+    let currentLevel = null;
+    let wallSegments = new Map();
+    let removedSegments = new Set();
+    let removedGroups = new Set();
+    let pickups = [];
+    let player = { x: 0, y: 0 };
+    let facing = "right";
+    let hasKey = false;
+    let finished = false;
+    let selectedItem = "phase";
+    let inventory = { phase: 0, chisel: 0, hammer: 0 };
+    let gridCols = DEFAULT_GRID;
+    let gridRows = DEFAULT_GRID;
+    let cellSize = canvas.width / DEFAULT_GRID;
+    let levelStartTime = 0;
+    let elapsedMs = 0;
+    let timerHandle = null;
+    let activeEffects = [];
+    let animationFrameId = null;
+    let audioContext = null;
+    let focusMode = false;
+
+    function inferLevelSize(level) {
+      if (level.cols && level.rows) {
+        return { cols: level.cols, rows: level.rows };
+      }
+
+      let maxX = 0;
+      let maxY = 0;
+      const points = [level.start, level.key, level.door, ...(level.pickups || [])];
+      points.forEach((point) => {
+        if (!point) return;
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      });
+
+      (level.walls || []).forEach((wall) => {
+        if (wall.orientation === "h") {
+          maxX = Math.max(maxX, wall.x + wall.length - 1);
+          maxY = Math.max(maxY, wall.y);
+        } else {
+          maxX = Math.max(maxX, wall.x);
+          maxY = Math.max(maxY, wall.y + wall.length - 1);
+        }
+      });
+
+      return {
+        cols: Math.max(DEFAULT_GRID, maxX + 1),
+        rows: Math.max(DEFAULT_GRID, maxY + 1)
+      };
+    }
+
+    function updateGridMetrics(level) {
+      const size = inferLevelSize(level);
+      gridCols = size.cols;
+      gridRows = size.rows;
+      cellSize = Math.min(canvas.width / gridCols, canvas.height / gridRows);
+    }
+
+    function setFocusMode(nextValue) {
+      focusMode = nextValue;
+      document.body.classList.toggle("focus-mode", focusMode);
+      appEl.classList.toggle("focus-mode", focusMode);
+      focusModeBtn.textContent = focusMode ? "退出闯关" : "闯关模式";
+      mobileFocusBtn.textContent = focusMode ? "退出" : "专注";
+      layoutCanvasForViewport();
+    }
+
+    function layoutCanvasForViewport() {
+      if (window.innerWidth > 900) {
+        canvas.style.width = "";
+        canvas.style.height = "";
+        return;
+      }
+
+      const appRect = appEl.getBoundingClientRect();
+      const topbarRect = topbarEl.getBoundingClientRect();
+      const hudRect = focusMode ? { height: 0 } : mobileHud.getBoundingClientRect();
+      const controlsRect = mobileControls.getBoundingClientRect();
+      const boardStyle = window.getComputedStyle(boardEl);
+      const boardPaddingX = parseFloat(boardStyle.paddingLeft) + parseFloat(boardStyle.paddingRight);
+
+      const availableWidth = Math.max(180, boardEl.clientWidth - boardPaddingX);
+      const verticalGap = 18;
+      const availableHeight = Math.max(
+        180,
+        window.innerHeight
+          - topbarRect.height
+          - hudRect.height
+          - controlsRect.height
+          - verticalGap * 3
+          - Math.max(appRect.top, 8)
+      );
+
+      const displaySize = Math.floor(Math.min(availableWidth, availableHeight));
+      canvas.style.width = `${displaySize}px`;
+      canvas.style.height = `${displaySize}px`;
+    }
+
+    function showAnnouncement(title, message, variant = "pickup") {
+      const card = document.createElement("div");
+      card.className = `announcement ${variant}`;
+      card.innerHTML = `<strong>${title}</strong><span>${message}</span>`;
+      announcer.appendChild(card);
+
+      setTimeout(() => {
+        card.style.opacity = "0";
+        card.style.transform = "translateY(-8px)";
+        card.style.transition = "opacity 180ms ease, transform 180ms ease";
+      }, 1800);
+
+      setTimeout(() => {
+        card.remove();
+      }, 2050);
+    }
+
+    function addEffect(effect) {
+      activeEffects.push({ ...effect, startTime: performance.now() });
+      ensureAnimationLoop();
+    }
+
+    function ensureAudioContext() {
+      if (!window.AudioContext && !window.webkitAudioContext) return null;
+      if (!audioContext) {
+        const AudioCtor = window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioCtor();
+      }
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+      return audioContext;
+    }
+
+    function playTone({
+      frequency = 440,
+      duration = 0.16,
+      type = "sine",
+      volume = 0.03,
+      slideTo = null,
+      delay = 0
+    }) {
+      const context = ensureAudioContext();
+      if (!context) return;
+
+      const startAt = context.currentTime + delay;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, startAt);
+      if (slideTo !== null) {
+        oscillator.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), startAt + duration);
+      }
+
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + duration + 0.03);
+    }
+
+    function playSound(name) {
+      if (name === "pickup") {
+        playTone({ frequency: 620, slideTo: 840, duration: 0.12, type: "triangle", volume: 0.028 });
+        playTone({ frequency: 930, slideTo: 1140, duration: 0.08, type: "triangle", volume: 0.02, delay: 0.06 });
+      }
+
+      if (name === "key") {
+        playTone({ frequency: 420, slideTo: 620, duration: 0.16, type: "triangle", volume: 0.03 });
+        playTone({ frequency: 740, slideTo: 980, duration: 0.12, type: "sine", volume: 0.024, delay: 0.08 });
+      }
+
+      if (name === "phase") {
+        playTone({ frequency: 320, slideTo: 980, duration: 0.18, type: "sawtooth", volume: 0.022 });
+      }
+
+      if (name === "chisel") {
+        playTone({ frequency: 220, slideTo: 180, duration: 0.07, type: "square", volume: 0.03 });
+        playTone({ frequency: 310, slideTo: 230, duration: 0.06, type: "square", volume: 0.024, delay: 0.05 });
+      }
+
+      if (name === "hammer") {
+        playTone({ frequency: 140, slideTo: 90, duration: 0.12, type: "square", volume: 0.04 });
+        playTone({ frequency: 180, slideTo: 120, duration: 0.11, type: "square", volume: 0.025, delay: 0.03 });
+      }
+
+      if (name === "finish") {
+        playTone({ frequency: 520, slideTo: 740, duration: 0.14, type: "triangle", volume: 0.03 });
+        playTone({ frequency: 760, slideTo: 980, duration: 0.14, type: "triangle", volume: 0.024, delay: 0.09 });
+        playTone({ frequency: 980, slideTo: 1280, duration: 0.18, type: "sine", volume: 0.022, delay: 0.18 });
+      }
+    }
+
+    function ensureAnimationLoop() {
+      if (animationFrameId !== null) return;
+
+      const tick = () => {
+        animationFrameId = null;
+        draw();
+
+        if (activeEffects.length > 0) {
+          animationFrameId = requestAnimationFrame(tick);
+        }
+      };
+
+      animationFrameId = requestAnimationFrame(tick);
+    }
+
+    function formatDuration(ms) {
+      const totalSeconds = Math.floor(ms / 1000);
+      const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      return `${minutes}:${seconds}`;
+    }
+
+    function updateTimerDisplay() {
+      timerText.textContent = formatDuration(elapsedMs);
+      mobileTimerChip.textContent = formatDuration(elapsedMs);
+    }
+
+    function stopTimer() {
+      if (timerHandle) {
+        clearInterval(timerHandle);
+        timerHandle = null;
+      }
+    }
+
+    function startTimer() {
+      stopTimer();
+      levelStartTime = Date.now();
+      elapsedMs = 0;
+      updateTimerDisplay();
+      timerHandle = setInterval(() => {
+        if (finished) return;
+        elapsedMs = Date.now() - levelStartTime;
+        updateTimerDisplay();
+      }, 200);
+    }
+
+    function openResultModal() {
+      resultTimeText.textContent = `用时 ${formatDuration(elapsedMs)}`;
+      resultNextBtn.disabled = levelIndex >= LEVELS.length - 1;
+      resultModal.classList.add("open");
+    }
+
+    function closeResultModal() {
+      resultModal.classList.remove("open");
+    }
+
+    function segmentKey(orientation, x, y) {
+      return `${orientation}:${x}:${y}`;
+    }
+
+    function expandWalls(walls) {
+      const segments = new Map();
+
+      walls.forEach((wall, index) => {
+        const group = wall.group || `wall-${index}`;
+        for (let step = 0; step < wall.length; step += 1) {
+          const x = wall.orientation === "h" ? wall.x + step : wall.x;
+          const y = wall.orientation === "v" ? wall.y + step : wall.y;
+          const key = segmentKey(wall.orientation, x, y);
+          segments.set(key, {
+            key,
+            x,
+            y,
+            orientation: wall.orientation,
+            breakMode: wall.breakMode,
+            group,
+            groupSize: wall.length
+          });
+        }
+      });
+
+      return segments;
+    }
+
+    function encodeState(state) {
+      return [
+        state.x,
+        state.y,
+        state.hasKey ? 1 : 0,
+        state.phase,
+        state.chisel,
+        state.hammer,
+        Array.from(state.collected).sort().join(","),
+        Array.from(state.removedSegments).sort().join(","),
+        Array.from(state.removedGroups).sort().join(",")
+      ].join("|");
+    }
+
+    function isActiveForState(segment, state) {
+      if (!segment) return false;
+      if (state.removedGroups.has(segment.group)) return false;
+      if (state.removedSegments.has(segment.key)) return false;
+      return true;
+    }
+
+    function collectStateRewards(level, state) {
+      const next = {
+        ...state,
+        collected: new Set(state.collected),
+        removedSegments: new Set(state.removedSegments),
+        removedGroups: new Set(state.removedGroups)
+      };
+
+      level.pickups.forEach((pickup, index) => {
+        const pickupId = `${pickup.type}-${index}`;
+        if (next.collected.has(pickupId)) return;
+        if (pickup.x !== next.x || pickup.y !== next.y) return;
+        next.collected.add(pickupId);
+        next[pickup.type] += 1;
+      });
+
+      if (next.x === level.key.x && next.y === level.key.y) {
+        next.hasKey = true;
+      }
+
+      return next;
+    }
+
+    function validateLevel(level) {
+      const segments = expandWalls(level.walls);
+      const queue = [
+        collectStateRewards(level, {
+          x: level.start.x,
+          y: level.start.y,
+          hasKey: false,
+          phase: 0,
+          chisel: 0,
+          hammer: 0,
+          collected: new Set(),
+          removedSegments: new Set(),
+          removedGroups: new Set()
+        })
+      ];
+      const seen = new Set();
+
+      while (queue.length > 0) {
+        const state = queue.shift();
+        const encoded = encodeState(state);
+        if (seen.has(encoded)) continue;
+        seen.add(encoded);
+
+        if (state.hasKey && state.x === level.door.x && state.y === level.door.y) {
+          return true;
+        }
+
+        ["up", "down", "left", "right"].forEach((dir) => {
+          const { dx, dy } = movementVector(dir);
+          const nextX = state.x + dx;
+          const nextY = state.y + dy;
+          if (!inBounds(nextX, nextY)) return;
+
+          const segment = getSegmentForMove(
+            { x: state.x, y: state.y },
+            dir,
+            segments
+          );
+
+          if (!isActiveForState(segment, state)) {
+            queue.push(
+              collectStateRewards(level, {
+                ...state,
+                x: nextX,
+                y: nextY,
+                collected: new Set(state.collected),
+                removedSegments: new Set(state.removedSegments),
+                removedGroups: new Set(state.removedGroups)
+              })
+            );
+            return;
+          }
+
+          if (state.phase > 0) {
+            queue.push(
+              collectStateRewards(level, {
+                ...state,
+                x: nextX,
+                y: nextY,
+                phase: state.phase - 1,
+                collected: new Set(state.collected),
+                removedSegments: new Set(state.removedSegments),
+                removedGroups: new Set(state.removedGroups)
+              })
+            );
+          }
+
+          if (state.chisel > 0) {
+            const broken = {
+              ...state,
+              chisel: state.chisel - 1,
+              collected: new Set(state.collected),
+              removedSegments: new Set(state.removedSegments),
+              removedGroups: new Set(state.removedGroups)
+            };
+            broken.removedSegments.add(segment.key);
+            queue.push(broken);
+          }
+
+          const connectedHammerKeys = getConnectedSegmentKeys(segment, state.removedSegments, state.removedGroups, segments);
+          if (connectedHammerKeys.length > 1 && state.hammer > 0) {
+            const smashed = {
+              ...state,
+              hammer: state.hammer - 1,
+              collected: new Set(state.collected),
+              removedSegments: new Set(state.removedSegments),
+              removedGroups: new Set(state.removedGroups)
+            };
+            connectedHammerKeys.forEach((key) => smashed.removedSegments.add(key));
+            queue.push(smashed);
+          }
+        });
+      }
+
+      return false;
+    }
+
+    function validateAllLevels() {
+      const invalid = LEVELS.filter((level) => !validateLevel(level));
+      if (invalid.length > 0) {
+        console.error("这些关卡当前无解：", invalid.map((level) => level.title));
+      }
+    }
+
+    function openLevelPicker() {
+      renderLevelPicker();
+      levelPicker.classList.add("open");
+    }
+
+    function closeLevelPicker() {
+      levelPicker.classList.remove("open");
+    }
+
+    function renderLevelPicker() {
+      levelGrid.innerHTML = "";
+
+      LEVELS.forEach((level, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `level-card-button${index === levelIndex ? " current" : ""}`;
+        button.innerHTML = `
+          <strong>第 ${level.id} 关</strong>
+          <span>${level.title}</span>
+        `;
+        button.addEventListener("click", () => {
+          loadLevel(index);
+          closeLevelPicker();
+        });
+        levelGrid.appendChild(button);
+      });
+    }
+
+    function loadLevel(index) {
+      closeResultModal();
+      stopTimer();
+      levelIndex = index;
+      currentLevel = LEVELS[levelIndex];
+      updateGridMetrics(currentLevel);
+      wallSegments = expandWalls(currentLevel.walls);
+      removedSegments = new Set();
+      removedGroups = new Set();
+      activeEffects = [];
+      announcer.innerHTML = "";
+      pickups = currentLevel.pickups.map((pickup, pickupIndex) => ({
+        ...pickup,
+        id: `${pickup.type}-${pickupIndex}`,
+        collected: false
+      }));
+      player = { ...currentLevel.start };
+      facing = "right";
+      hasKey = false;
+      finished = false;
+      selectedItem = bestDefaultItem();
+      inventory = { phase: 0, chisel: 0, hammer: 0 };
+      setStatus(currentLevel.teaching);
+      startTimer();
+      syncUi();
+      renderLevelPicker();
+      layoutCanvasForViewport();
+      draw();
+    }
+
+    function bestDefaultItem() {
+      const levelItems = new Set(currentLevel ? currentLevel.pickups.map((item) => item.type) : []);
+      if (levelItems.has("phase")) return "phase";
+      if (levelItems.has("chisel")) return "chisel";
+      if (levelItems.has("hammer")) return "hammer";
+      return "phase";
+    }
+
+    function setStatus(message) {
+      statusText.textContent = message;
+    }
+
+    function cellCenter(cell) {
+      return {
+        x: cell.x * cellSize + cellSize / 2,
+        y: cell.y * cellSize + cellSize / 2
+      };
+    }
+
+    function getSegmentForMove(cell, dir, source = wallSegments) {
+      if (dir === "up") return source.get(segmentKey("h", cell.x, cell.y));
+      if (dir === "down") return source.get(segmentKey("h", cell.x, cell.y + 1));
+      if (dir === "left") return source.get(segmentKey("v", cell.x, cell.y));
+      return source.get(segmentKey("v", cell.x + 1, cell.y));
+    }
+
+    function isSegmentActive(segment) {
+      if (!segment) return false;
+      if (removedGroups.has(segment.group)) return false;
+      if (removedSegments.has(segment.key)) return false;
+      return true;
+    }
+
+    function getConnectedSegmentKeys(segment, removedSegmentSet = removedSegments, removedGroupSet = removedGroups, source = wallSegments) {
+      if (!segment) return [];
+
+      const isActive = (candidate) => {
+        if (!candidate) return false;
+        if (removedGroupSet.has(candidate.group)) return false;
+        if (removedSegmentSet.has(candidate.key)) return false;
+        return true;
+      };
+
+      if (!isActive(segment)) return [];
+
+      const stack = [segment];
+      const visited = new Set();
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || visited.has(current.key)) continue;
+        if (!isActive(current)) continue;
+        visited.add(current.key);
+
+        if (current.orientation === "h") {
+          const left = source.get(segmentKey("h", current.x - 1, current.y));
+          const right = source.get(segmentKey("h", current.x + 1, current.y));
+          if (left && left.orientation === current.orientation) stack.push(left);
+          if (right && right.orientation === current.orientation) stack.push(right);
+        } else {
+          const up = source.get(segmentKey("v", current.x, current.y - 1));
+          const down = source.get(segmentKey("v", current.x, current.y + 1));
+          if (up && up.orientation === current.orientation) stack.push(up);
+          if (down && down.orientation === current.orientation) stack.push(down);
+        }
+      }
+
+      return Array.from(visited);
+    }
+
+    function movementVector(dir) {
+      if (dir === "up") return { dx: 0, dy: -1 };
+      if (dir === "down") return { dx: 0, dy: 1 };
+      if (dir === "left") return { dx: -1, dy: 0 };
+      return { dx: 1, dy: 0 };
+    }
+
+    function inBounds(x, y) {
+      return x >= 0 && x < gridCols && y >= 0 && y < gridRows;
+    }
+
+    function tryMove(dir) {
+      if (finished) return;
+
+      facing = dir;
+      const { dx, dy } = movementVector(dir);
+      const nextX = player.x + dx;
+      const nextY = player.y + dy;
+
+      if (!inBounds(nextX, nextY)) {
+        setStatus("边界外面是墙，先找别的路。");
+        syncUi();
+        draw();
+        return;
+      }
+
+      const segment = getSegmentForMove(player, dir);
+      if (isSegmentActive(segment)) {
+        if (selectedItem === "phase" && inventory.phase > 0) {
+          setStatus("前面有墙。按空格使用幻越符，才能翻过去。");
+        } else {
+          setStatus("前面是墙。换路，或者使用更合适的道具。");
+        }
+        syncUi();
+        draw();
+        return;
+      }
+
+      player = { x: nextX, y: nextY };
+      afterMove();
+    }
+
+    function afterMove() {
+      collectPickup();
+      collectKey();
+      checkDoor();
+      syncUi();
+      draw();
+      ensureAnimationLoop();
+    }
+
+    function collectPickup() {
+      const pickup = pickups.find((item) => !item.collected && item.x === player.x && item.y === player.y);
+      if (!pickup) return;
+
+      pickup.collected = true;
+      inventory[pickup.type] += 1;
+      selectedItem = pickup.type;
+      setStatus(`拿到了 ${ITEM_META[pickup.type].name}。`);
+      showAnnouncement("获得道具", `获得了${ITEM_META[pickup.type].name}`, "pickup");
+      playSound("pickup");
+      addEffect({
+        type: "pickupBurst",
+        x: player.x,
+        y: player.y,
+        color: ITEM_META[pickup.type].color,
+        duration: 650
+      });
+    }
+
+    function collectKey() {
+      if (hasKey) return;
+      if (player.x !== currentLevel.key.x || player.y !== currentLevel.key.y) return;
+      hasKey = true;
+      setStatus("钥匙到手，出口门已经可以通过了。");
+      showAnnouncement("关键进展", "你拿到了钥匙，出口门开启了。", "key");
+      playSound("key");
+      addEffect({
+        type: "pickupBurst",
+        x: currentLevel.key.x,
+        y: currentLevel.key.y,
+        color: "#d79c27",
+        duration: 800
+      });
+    }
+
+    function checkDoor() {
+      if (player.x !== currentLevel.door.x || player.y !== currentLevel.door.y) return;
+      if (!hasKey) {
+        setStatus("门就在这里，但还锁着。先去找钥匙。");
+        return;
+      }
+
+      finished = true;
+      elapsedMs = Date.now() - levelStartTime;
+      updateTimerDisplay();
+      stopTimer();
+      if (levelIndex === LEVELS.length - 1) {
+        setStatus("四个教学关卡已经全部通过，后面可以继续扩设计了。");
+      } else {
+        setStatus("本关通过，已经可以进入下一关。");
+      }
+      playSound("finish");
+      openResultModal();
+    }
+
+    function useCurrentItem() {
+      if (finished) return;
+
+      if (selectedItem === "phase") {
+        if (inventory.phase <= 0) {
+          setStatus("幻越符已经用完了。");
+          syncUi();
+          draw();
+          return;
+        }
+
+        const { dx, dy } = movementVector(facing);
+        const nextX = player.x + dx;
+        const nextY = player.y + dy;
+
+        if (!inBounds(nextX, nextY)) {
+          setStatus("边界外不能翻越。");
+          syncUi();
+          draw();
+          return;
+        }
+
+        const phaseTarget = getSegmentForMove(player, facing);
+        if (!isSegmentActive(phaseTarget)) {
+          setStatus("你面前没有墙，不需要使用幻越符。");
+          syncUi();
+          draw();
+          return;
+        }
+
+        inventory.phase -= 1;
+        player = { x: nextX, y: nextY };
+        setStatus("幻越符发动成功，你翻过了这堵墙。墙本身没有被破坏。");
+        showAnnouncement("使用道具", "幻越符发动，你闪现穿过了墙。", "use");
+        playSound("phase");
+        addEffect({
+          type: "phaseFlash",
+          from: { ...player },
+          to: { x: nextX, y: nextY },
+          duration: 420,
+          color: ITEM_META.phase.color
+        });
+        afterMove();
+        return;
+      }
+
+      const segment = getSegmentForMove(player, facing);
+      if (!isSegmentActive(segment)) {
+        setStatus("你当前朝向前面没有可处理的墙。");
+        syncUi();
+        draw();
+        return;
+      }
+
+      if (selectedItem === "chisel") {
+        if (inventory.chisel <= 0) {
+          setStatus("裂隙钉已经没有了。");
+        } else {
+          inventory.chisel -= 1;
+          removedSegments.add(segment.key);
+          setStatus("裂隙钉敲掉了一小段单位墙，这里现在出现了一个缺口。");
+          showAnnouncement("使用道具", "裂隙钉敲碎了一小段墙。", "use");
+          playSound("chisel");
+          addEffect({
+            type: "wallBreak",
+            keys: [segment.key],
+            duration: 560,
+            color: ITEM_META.chisel.color
+          });
+        }
+      }
+
+      if (selectedItem === "hammer") {
+        if (inventory.hammer <= 0) {
+          setStatus("破城锤已经用完了。");
+        } else {
+          const connectedHammerKeys = getConnectedSegmentKeys(segment);
+          if (connectedHammerKeys.length <= 1) {
+            setStatus("破城锤只能砸当前连在一起的长墙，这里只剩一小段了。");
+          } else {
+            inventory.hammer -= 1;
+            connectedHammerKeys.forEach((key) => removedSegments.add(key));
+            setStatus("当前连在一起的整段长墙被破城锤打碎了。");
+            showAnnouncement("使用道具", "破城锤砸碎了这一整段墙。", "use");
+            playSound("hammer");
+            addEffect({
+              type: "wallBreak",
+              keys: connectedHammerKeys,
+              duration: 760,
+              color: ITEM_META.hammer.color
+            });
+          }
+        }
+      }
+
+      syncUi();
+      draw();
+      ensureAnimationLoop();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawFloor();
+      drawTargetAreas();
+      drawGridTint();
+      drawWalls();
+      drawKey();
+      drawDoor();
+      drawPickups();
+      drawPlayer();
+      drawFacingMarker();
+      drawEffects();
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function getScaledSizes() {
+      return {
+        wallWidth: clamp(cellSize * 0.14, 2, 8),
+        playerRadius: clamp(cellSize * 0.18, 8, 20),
+        playerRing: clamp(cellSize * 0.24, 11, 26),
+        pickupRadius: clamp(cellSize * 0.16, 7, 18),
+        keyRing: clamp(cellSize * 0.12, 6, 14),
+        keyShift: clamp(cellSize * 0.1, 5, 12),
+        keyBar: clamp(cellSize * 0.24, 14, 28),
+        doorWidth: clamp(cellSize * 0.42, 20, 48),
+        doorHeight: clamp(cellSize * 0.52, 26, 56),
+        facingLength: clamp(cellSize * 0.26, 12, 28),
+        doorKnob: clamp(cellSize * 0.035, 2, 4)
+      };
+    }
+
+    function drawFloor() {
+      ctx.fillStyle = "#fbf6ee";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawTargetAreas() {
+      const start = currentLevel.start;
+      const startRectX = start.x * cellSize;
+      const startRectY = start.y * cellSize;
+      ctx.fillStyle = "rgba(212, 95, 62, 0.08)";
+      ctx.fillRect(startRectX, startRectY, cellSize, cellSize);
+
+      const doorRectX = currentLevel.door.x * cellSize;
+      const doorRectY = currentLevel.door.y * cellSize;
+      ctx.fillStyle = hasKey ? "rgba(47, 125, 87, 0.16)" : "rgba(142, 142, 142, 0.14)";
+      ctx.fillRect(doorRectX, doorRectY, cellSize, cellSize);
+    }
+
+    function drawGridTint() {
+      ctx.strokeStyle = "rgba(31, 31, 31, 0.04)";
+      ctx.lineWidth = 1;
+      const boardWidth = gridCols * cellSize;
+      const boardHeight = gridRows * cellSize;
+
+      for (let i = 1; i < gridCols; i += 1) {
+        const offset = i * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(offset, 0);
+        ctx.lineTo(offset, boardHeight);
+        ctx.stroke();
+      }
+
+      for (let i = 1; i < gridRows; i += 1) {
+        const offset = i * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(0, offset);
+        ctx.lineTo(boardWidth, offset);
+        ctx.stroke();
+      }
+    }
+
+    function drawWalls() {
+      ctx.strokeStyle = "#202020";
+      ctx.lineWidth = getScaledSizes().wallWidth;
+      ctx.lineCap = "round";
+
+      const boardWidth = gridCols * cellSize;
+      const boardHeight = gridRows * cellSize;
+
+      drawLine(0, 0, boardWidth, 0);
+      drawLine(0, boardHeight, boardWidth, boardHeight);
+      drawLine(0, 0, 0, boardHeight);
+      drawLine(boardWidth, 0, boardWidth, boardHeight);
+
+      wallSegments.forEach((segment) => {
+        if (!isSegmentActive(segment)) return;
+
+        const highlightTarget = getHighlightedSegment();
+        if (highlightTarget && highlightTarget.key === segment.key) {
+          ctx.strokeStyle = selectedItem === "chisel" ? "#d77e3e" : "#7c4cc7";
+        } else if (segment.groupSize === 1) {
+          ctx.strokeStyle = "rgba(181, 95, 34, 0.72)";
+        } else if (segment.groupSize > 1) {
+          ctx.strokeStyle = "rgba(124, 76, 199, 0.88)";
+        } else {
+          ctx.strokeStyle = "#202020";
+        }
+
+        const x = segment.x * cellSize;
+        const y = segment.y * cellSize;
+        if (segment.orientation === "h") {
+          drawLine(x, y, x + cellSize, y);
+        } else {
+          drawLine(x, y, x, y + cellSize);
+        }
+      });
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawKey() {
+      if (hasKey) return;
+
+      const center = cellCenter(currentLevel.key);
+      const sizes = getScaledSizes();
+      const keyGradient = ctx.createRadialGradient(
+        center.x - sizes.keyShift * 1.2,
+        center.y - sizes.keyRing * 0.8,
+        sizes.keyRing * 0.15,
+        center.x,
+        center.y,
+        sizes.keyRing * 2.2
+      );
+      keyGradient.addColorStop(0, "#ffe6a8");
+      keyGradient.addColorStop(0.55, "#e1b34a");
+      keyGradient.addColorStop(1, "#9c6d14");
+      ctx.fillStyle = keyGradient;
+      ctx.beginPath();
+      ctx.arc(center.x - sizes.keyShift, center.y, sizes.keyRing, 0, Math.PI * 2);
+      ctx.fill();
+
+      const barHeight = clamp(sizes.keyRing * 0.55, 4, 8);
+      const toothWidth = clamp(sizes.keyRing * 0.45, 3, 6);
+      const longToothHeight = clamp(sizes.keyRing * 1.4, 10, 20);
+      const shortToothHeight = clamp(sizes.keyRing, 7, 14);
+
+      ctx.fillRect(center.x - toothWidth / 2, center.y - barHeight / 2, sizes.keyBar, barHeight);
+      ctx.fillRect(center.x + sizes.keyBar * 0.64, center.y - longToothHeight / 2, toothWidth, longToothHeight);
+      ctx.fillRect(center.x + sizes.keyBar * 0.9, center.y - barHeight / 2, toothWidth, shortToothHeight);
+
+      ctx.strokeStyle = "rgba(120, 76, 14, 0.45)";
+      ctx.lineWidth = clamp(cellSize * 0.02, 1, 2);
+      ctx.beginPath();
+      ctx.arc(center.x - sizes.keyShift, center.y, sizes.keyRing, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function drawDoor() {
+      const center = cellCenter(currentLevel.door);
+      const sizes = getScaledSizes();
+      const color = hasKey ? "#2f7d57" : "#8e8e8e";
+      const doorGradient = ctx.createLinearGradient(
+        center.x - sizes.doorWidth / 2,
+        center.y - sizes.doorHeight / 2,
+        center.x + sizes.doorWidth / 2,
+        center.y + sizes.doorHeight / 2
+      );
+      doorGradient.addColorStop(0, hasKey ? "#6eb38a" : "#bababa");
+      doorGradient.addColorStop(0.5, color);
+      doorGradient.addColorStop(1, hasKey ? "#1c573a" : "#666666");
+      ctx.fillStyle = doorGradient;
+      ctx.fillRect(center.x - sizes.doorWidth / 2, center.y - sizes.doorHeight / 2, sizes.doorWidth, sizes.doorHeight);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.fillRect(center.x - sizes.doorWidth * 0.3, center.y - sizes.doorHeight * 0.36, sizes.doorWidth * 0.58, sizes.doorHeight * 0.32);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+      ctx.fillRect(center.x - sizes.doorWidth * 0.08, center.y - sizes.doorHeight * 0.5, sizes.doorWidth * 0.08, sizes.doorHeight);
+      ctx.fillStyle = "#f6f1e8";
+      ctx.beginPath();
+      ctx.arc(center.x + sizes.doorWidth * 0.25, center.y + sizes.doorHeight * 0.08, sizes.doorKnob, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawPickups() {
+      pickups.forEach((pickup) => {
+        if (pickup.collected) return;
+
+        const center = cellCenter(pickup);
+        const sizes = getScaledSizes();
+        const color = ITEM_META[pickup.type].color;
+        const itemGradient = ctx.createLinearGradient(
+          center.x - sizes.pickupRadius,
+          center.y - sizes.pickupRadius,
+          center.x + sizes.pickupRadius,
+          center.y + sizes.pickupRadius
+        );
+        itemGradient.addColorStop(0, "rgba(255,255,255,0.92)");
+        itemGradient.addColorStop(0.28, color);
+        itemGradient.addColorStop(1, "rgba(0,0,0,0.18)");
+        ctx.fillStyle = itemGradient;
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y - sizes.pickupRadius);
+        ctx.lineTo(center.x + sizes.pickupRadius, center.y);
+        ctx.lineTo(center.x, center.y + sizes.pickupRadius);
+        ctx.lineTo(center.x - sizes.pickupRadius, center.y);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.lineWidth = clamp(cellSize * 0.02, 1, 2);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
+        ctx.font = `bold ${clamp(cellSize * 0.22, 10, 16)}px Segoe UI`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const mark = pickup.type === "phase" ? "穿" : pickup.type === "chisel" ? "裂" : "破";
+        ctx.fillText(mark, center.x, center.y + 1);
+      });
+    }
+
+    function drawPlayer() {
+      const center = cellCenter(player);
+      const sizes = getScaledSizes();
+      const bodyGradient = ctx.createRadialGradient(
+        center.x - sizes.playerRadius * 0.4,
+        center.y - sizes.playerRadius * 0.55,
+        sizes.playerRadius * 0.12,
+        center.x,
+        center.y,
+        sizes.playerRadius * 1.45
+      );
+      bodyGradient.addColorStop(0, "#ffcfb3");
+      bodyGradient.addColorStop(0.38, "#ef8f63");
+      bodyGradient.addColorStop(1, "#a63e21");
+      ctx.fillStyle = bodyGradient;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, sizes.playerRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.18)";
+      ctx.lineWidth = clamp(cellSize * 0.03, 2, 3);
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, sizes.playerRing, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath();
+      ctx.arc(
+        center.x - sizes.playerRadius * 0.35,
+        center.y - sizes.playerRadius * 0.42,
+        clamp(sizes.playerRadius * 0.26, 3, 6),
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    function drawFacingMarker() {
+      const center = cellCenter(player);
+      const offset = movementVector(facing);
+      const sizes = getScaledSizes();
+      ctx.strokeStyle = "rgba(212, 95, 62, 0.92)";
+      ctx.lineWidth = clamp(cellSize * 0.035, 2, 4);
+      ctx.beginPath();
+      ctx.moveTo(center.x, center.y);
+      ctx.lineTo(center.x + offset.dx * sizes.facingLength, center.y + offset.dy * sizes.facingLength);
+      ctx.stroke();
+    }
+
+    function drawEffects() {
+      if (activeEffects.length === 0) return;
+
+      const now = performance.now();
+      const nextEffects = [];
+
+      activeEffects.forEach((effect) => {
+        const progress = Math.min(1, (now - effect.startTime) / effect.duration);
+        if (progress < 1) {
+          nextEffects.push(effect);
+        }
+
+        if (effect.type === "pickupBurst") {
+          drawPickupBurst(effect, progress);
+        }
+
+        if (effect.type === "phaseFlash") {
+          drawPhaseFlash(effect, progress);
+        }
+
+        if (effect.type === "wallBreak") {
+          drawWallBreak(effect, progress);
+        }
+      });
+
+      activeEffects = nextEffects;
+    }
+
+    function drawPickupBurst(effect, progress) {
+      const center = cellCenter(effect);
+      const radius = clamp(cellSize * (0.18 + progress * 0.45), 10, 44);
+      ctx.save();
+      ctx.globalAlpha = 1 - progress;
+      ctx.strokeStyle = effect.color;
+      ctx.lineWidth = clamp(cellSize * 0.04, 2, 5);
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPhaseFlash(effect, progress) {
+      const from = cellCenter(effect.from);
+      const to = cellCenter(effect.to);
+      ctx.save();
+      ctx.globalAlpha = 0.8 - progress * 0.8;
+      ctx.strokeStyle = effect.color;
+      ctx.lineWidth = clamp(cellSize * 0.16 * (1 - progress * 0.5), 4, 12);
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+
+      const currentX = from.x + (to.x - from.x) * progress;
+      const currentY = from.y + (to.y - from.y) * progress;
+      ctx.fillStyle = effect.color;
+      ctx.beginPath();
+      ctx.arc(currentX, currentY, clamp(cellSize * 0.18 * (1 - progress * 0.3), 5, 16), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawWallBreak(effect, progress) {
+      const localSegments = effect.keys
+        .map((key) => wallSegments.get(key))
+        .filter(Boolean);
+
+      ctx.save();
+      ctx.globalAlpha = 1 - progress;
+
+      localSegments.forEach((segment, index) => {
+        const x = segment.x * cellSize;
+        const y = segment.y * cellSize;
+        const pieceCount = segment.orientation === "h" ? 4 : 5;
+
+        for (let piece = 0; piece < pieceCount; piece += 1) {
+          const t = piece / pieceCount;
+          const drift = clamp(cellSize * 0.22, 8, 18) * progress;
+          const scatter = (piece - (pieceCount - 1) / 2) * clamp(cellSize * 0.08, 3, 8);
+          const fall = progress * progress * clamp(cellSize * 0.18, 6, 16);
+          const shardLength = cellSize / pieceCount * (0.78 - progress * 0.2);
+          const thickness = clamp(cellSize * 0.06 * (1 - progress * 0.35), 2, 5);
+
+          ctx.strokeStyle = piece % 2 === 0 ? effect.color : "rgba(255,255,255,0.85)";
+          ctx.lineWidth = thickness;
+          ctx.lineCap = "round";
+
+          if (segment.orientation === "h") {
+            const startX = x + t * cellSize + scatter + drift * (index % 2 === 0 ? 1 : -1);
+            const startY = y + scatter * 0.08 + fall;
+            drawLine(startX, startY, startX + shardLength, startY + (piece % 2 === 0 ? drift * 0.08 : -drift * 0.08));
+          } else {
+            const startX = x + scatter * 0.08 + drift * (index % 2 === 0 ? 1 : -1);
+            const startY = y + t * cellSize + scatter + fall;
+            drawLine(startX, startY, startX + (piece % 2 === 0 ? drift * 0.08 : -drift * 0.08), startY + shardLength);
+          }
+        }
+      });
+
+      ctx.restore();
+    }
+
+    function getHighlightedSegment() {
+      if (selectedItem === "phase") return null;
+      return getSegmentForMove(player, facing);
+    }
+
+    function syncUi() {
+      levelTitle.textContent = currentLevel.title;
+      goalText.textContent = currentLevel.goal;
+      facingText.textContent = facingToText(facing);
+      keyText.textContent = hasKey ? "已拿到" : "未拿到";
+      updateTimerDisplay();
+      toolHelpText.textContent = TOOL_HELP[selectedItem];
+      mobileLevelChip.textContent = `第 ${currentLevel.id} 关`;
+      mobileKeyChip.textContent = `钥匙：${hasKey ? "已拿到" : "未拿到"}`;
+      mobileItemChip.textContent = `当前：${ITEM_META[selectedItem].name} x${inventory[selectedItem]}`;
+      nextBtn.disabled = !finished || levelIndex >= LEVELS.length - 1;
+      renderInventory();
+      layoutCanvasForViewport();
+    }
+
+    function facingToText(dir) {
+      if (dir === "up") return "上";
+      if (dir === "down") return "下";
+      if (dir === "left") return "左";
+      return "右";
+    }
+
+    function renderInventory() {
+      inventoryEl.innerHTML = "";
+
+      Object.entries(ITEM_META).forEach(([type, meta]) => {
+        const row = document.createElement("div");
+        row.className = `inventory-item${selectedItem === type ? " active" : ""}${inventory[type] === 0 ? " dim" : ""}`;
+
+        const left = document.createElement("div");
+        left.style.display = "flex";
+        left.style.alignItems = "center";
+        left.style.gap = "8px";
+
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = meta.color;
+
+        const label = document.createElement("span");
+        label.textContent = `${meta.hotkey}. ${meta.name}`;
+
+        left.appendChild(swatch);
+        left.appendChild(label);
+
+        const right = document.createElement("span");
+        right.textContent = `x${inventory[type]}`;
+
+        row.appendChild(left);
+        row.appendChild(right);
+        inventoryEl.appendChild(row);
+      });
+
+      mobileItemButtons.forEach((button) => {
+        const type = button.dataset.item;
+        button.classList.toggle("active", selectedItem === type);
+        button.classList.toggle("dim", inventory[type] === 0);
+      });
+    }
+
+    function handleKeydown(event) {
+      const key = event.key.toLowerCase();
+      const controls = ["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "1", "2", "3", " "];
+
+      if (controls.includes(key) || event.code === "Space") {
+        event.preventDefault();
+      }
+
+      if (key === "arrowup" || key === "w") tryMove("up");
+      if (key === "arrowdown" || key === "s") tryMove("down");
+      if (key === "arrowleft" || key === "a") tryMove("left");
+      if (key === "arrowright" || key === "d") tryMove("right");
+      if (key === "1") selectedItem = "phase";
+      if (key === "2") selectedItem = "chisel";
+      if (key === "3") selectedItem = "hammer";
+      if (key === " " || event.code === "Space") useCurrentItem();
+
+      syncUi();
+      draw();
+    }
+
+    restartBtn.addEventListener("click", () => loadLevel(levelIndex));
+    nextBtn.addEventListener("click", () => {
+      const next = Math.min(levelIndex + 1, LEVELS.length - 1);
+      loadLevel(next);
+    });
+    resultNextBtn.addEventListener("click", () => {
+      if (levelIndex >= LEVELS.length - 1) return;
+      loadLevel(levelIndex + 1);
+    });
+    resultCloseBtn.addEventListener("click", closeResultModal);
+    resultModal.addEventListener("click", (event) => {
+      if (event.target === resultModal) {
+        closeResultModal();
+      }
+    });
+    levelPickerBtn.addEventListener("click", openLevelPicker);
+    mobileMoveButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        tryMove(button.dataset.move);
+      });
+    });
+    mobileItemButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedItem = button.dataset.item;
+        syncUi();
+        draw();
+      });
+    });
+    mobileUseButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.dataset.use === "item") {
+          useCurrentItem();
+        }
+      });
+    });
+    focusModeBtn.addEventListener("click", () => setFocusMode(!focusMode));
+    mobileFocusBtn.addEventListener("click", () => setFocusMode(!focusMode));
+    closeLevelPickerBtn.addEventListener("click", closeLevelPicker);
+    levelPicker.addEventListener("click", (event) => {
+      if (event.target === levelPicker) {
+        closeLevelPicker();
+      }
+    });
+    document.addEventListener("keydown", handleKeydown);
+    window.addEventListener("resize", layoutCanvasForViewport);
+
+    validateAllLevels();
+    renderLevelPicker();
+    loadLevel(0);
+  </script>
+</body>
+</html>

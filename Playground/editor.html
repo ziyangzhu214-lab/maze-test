@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>迷宫关卡编辑器</title>
+  <style>
+    :root {
+      --bg: #efe6d6;
+      --panel: rgba(255, 250, 242, 0.96);
+      --ink: #1f1f1f;
+      --hint: rgba(31, 31, 31, 0.68);
+      --grid: rgba(31, 31, 31, 0.12);
+      --wall: #222;
+      --player: #d45f3e;
+      --key: #d79c27;
+      --door: #2f7d57;
+      --phase: #4466dd;
+      --chisel: #b55f22;
+      --hammer: #7c4cc7;
+      --active: #f4d9a6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgba(255, 255, 255, 0.8), transparent 38%),
+        linear-gradient(135deg, #e5d5bc, var(--bg));
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .app {
+      width: min(1240px, 96vw);
+      padding: 20px;
+      border-radius: 28px;
+      background: var(--panel);
+      border: 2px solid rgba(31, 31, 31, 0.08);
+      box-shadow: 0 24px 70px rgba(77, 53, 26, 0.14);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 40px);
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--hint);
+      font-size: 15px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 760px) minmax(320px, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .board {
+      padding: 12px;
+      border-radius: 24px;
+      border: 2px solid rgba(31, 31, 31, 0.08);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 246, 235, 0.92));
+    }
+
+    canvas {
+      width: 100%;
+      display: block;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 252, 247, 1), rgba(249, 239, 224, 1));
+      cursor: crosshair;
+    }
+
+    .panel {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(31, 31, 31, 0.08);
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .row label {
+      font-size: 14px;
+      color: var(--hint);
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(31, 31, 31, 0.12);
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+    }
+
+    textarea {
+      min-height: 280px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      background: var(--ink);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button.ghost {
+      background: rgba(31, 31, 31, 0.08);
+      color: var(--ink);
+    }
+
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .tool {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(31, 31, 31, 0.08);
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--ink);
+      text-align: left;
+    }
+
+    .tool.active {
+      background: var(--active);
+      border-color: rgba(31, 31, 31, 0.16);
+    }
+
+    .status {
+      margin: 0;
+      min-height: 22px;
+      color: #b05a2c;
+      font-weight: 700;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--hint);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div>
+        <h1>迷宫关卡编辑器</h1>
+        <p class="subtitle">点边线切墙，点格子放起点/钥匙/门/道具，最后一键导出关卡代码。</p>
+      </div>
+      <div class="row">
+        <a href="./index.html" style="text-decoration: none;"><button type="button" class="ghost">回试玩页</button></a>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="board">
+        <canvas id="editorCanvas" width="760" height="760"></canvas>
+      </section>
+
+      <aside class="panel">
+        <section class="card">
+          <h2>基础信息</h2>
+          <div class="stack">
+            <div class="row">
+              <label for="levelId">关卡 ID</label>
+              <input id="levelId" type="number" value="100" min="1">
+            </div>
+            <div class="row">
+              <label for="levelTitle">标题</label>
+              <input id="levelTitle" type="text" value="自定义手绘关卡">
+            </div>
+            <div class="row">
+              <label for="levelGoal">目标</label>
+              <input id="levelGoal" type="text" value="先拿到钥匙，再前往出口门。">
+            </div>
+            <div class="row">
+              <label for="levelTeaching">提示</label>
+              <input id="levelTeaching" type="text" value="这是通过图形化编辑器手绘出来的关卡。">
+            </div>
+            <div class="row">
+              <label for="gridCols">列数</label>
+              <input id="gridCols" type="number" value="12" min="4" max="30">
+              <label for="gridRows">行数</label>
+              <input id="gridRows" type="number" value="12" min="4" max="30">
+            </div>
+            <div class="row">
+              <button id="resizeBtn" type="button">应用尺寸并清空</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>工具</h2>
+          <div class="tool-grid">
+            <button class="tool active" data-tool="wall" type="button">墙体</button>
+            <button class="tool" data-tool="start" type="button">起点</button>
+            <button class="tool" data-tool="key" type="button">钥匙</button>
+            <button class="tool" data-tool="door" type="button">门</button>
+            <button class="tool" data-tool="phase" type="button">幻越符</button>
+            <button class="tool" data-tool="chisel" type="button">裂隙钉</button>
+            <button class="tool" data-tool="hammer" type="button">破城锤</button>
+            <button class="tool" data-tool="erase-item" type="button">擦除道具</button>
+          </div>
+          <p class="hint" style="margin-top: 10px;">墙体模式下点击靠近格线的位置会切换那一段墙。其他模式下点击格子会放置对应元素。</p>
+        </section>
+
+        <section class="card">
+          <h2>当前信息</h2>
+          <p class="status" id="status">准备开始绘制。</p>
+          <div class="stack">
+            <p class="hint"><span class="swatch" style="background: #d45f3e;"></span>起点：<span id="startInfo"></span></p>
+            <p class="hint"><span class="swatch" style="background: #d79c27;"></span>钥匙：<span id="keyInfo"></span></p>
+            <p class="hint"><span class="swatch" style="background: #2f7d57;"></span>门：<span id="doorInfo"></span></p>
+            <p class="hint">道具数量：<span id="pickupInfo"></span></p>
+            <p class="hint">墙段数量：<span id="wallInfo"></span></p>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>导出</h2>
+          <div class="row">
+            <button id="exportBtn" type="button">确定并导出代码</button>
+            <button id="copyBtn" type="button" class="ghost">复制代码</button>
+            <button id="clearBtn" type="button" class="ghost">清空地图</button>
+          </div>
+          <textarea id="output" spellcheck="false" placeholder="点“确定并导出代码”后，这里会生成可直接粘贴到 LEVELS 里的对象代码。"></textarea>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("editorCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const levelIdInput = document.getElementById("levelId");
+    const levelTitleInput = document.getElementById("levelTitle");
+    const levelGoalInput = document.getElementById("levelGoal");
+    const levelTeachingInput = document.getElementById("levelTeaching");
+    const gridColsInput = document.getElementById("gridCols");
+    const gridRowsInput = document.getElementById("gridRows");
+    const resizeBtn = document.getElementById("resizeBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const output = document.getElementById("output");
+    const statusText = document.getElementById("status");
+    const startInfo = document.getElementById("startInfo");
+    const keyInfo = document.getElementById("keyInfo");
+    const doorInfo = document.getElementById("doorInfo");
+    const pickupInfo = document.getElementById("pickupInfo");
+    const wallInfo = document.getElementById("wallInfo");
+    const toolButtons = Array.from(document.querySelectorAll(".tool"));
+
+    const COLORS = {
+      start: "#d45f3e",
+      key: "#d79c27",
+      door: "#2f7d57",
+      phase: "#4466dd",
+      chisel: "#b55f22",
+      hammer: "#7c4cc7"
+    };
+
+    let cols = 12;
+    let rows = 12;
+    let cellSize = canvas.width / cols;
+    let tool = "wall";
+    let start = { x: 0, y: 0 };
+    let key = { x: cols - 2, y: rows - 2 };
+    let door = { x: cols - 1, y: 0 };
+    let pickups = [];
+    let horizontalWalls = new Set();
+    let verticalWalls = new Set();
+
+    function horizontalKey(x, y) {
+      return `h:${x}:${y}`;
+    }
+
+    function verticalKey(x, y) {
+      return `v:${x}:${y}`;
+    }
+
+    function setStatus(message) {
+      statusText.textContent = message;
+    }
+
+    function recalcCellSize() {
+      cellSize = canvas.width / Math.max(cols, rows);
+    }
+
+    function resetMap() {
+      start = { x: 0, y: 0 };
+      key = { x: Math.max(cols - 2, 0), y: Math.max(rows - 2, 0) };
+      door = { x: Math.max(cols - 1, 0), y: 0 };
+      pickups = [];
+      horizontalWalls = new Set();
+      verticalWalls = new Set();
+      setStatus("地图已重置为空白模板。");
+      syncInfo();
+      draw();
+    }
+
+    function setTool(nextTool) {
+      tool = nextTool;
+      toolButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.tool === tool);
+      });
+      setStatus(`当前工具：${toolLabel(tool)}`);
+    }
+
+    function toolLabel(value) {
+      const labels = {
+        wall: "墙体",
+        start: "起点",
+        key: "钥匙",
+        door: "门",
+        phase: "幻越符",
+        chisel: "裂隙钉",
+        hammer: "破城锤",
+        "erase-item": "擦除道具"
+      };
+      return labels[value] || value;
+    }
+
+    function toggleWallAt(pixelX, pixelY) {
+      const gridX = pixelX / cellSize;
+      const gridY = pixelY / cellSize;
+      const nearestV = Math.round(gridX);
+      const nearestH = Math.round(gridY);
+      const dx = Math.abs(gridX - nearestV);
+      const dy = Math.abs(gridY - nearestH);
+
+      if (dx < dy) {
+        const x = nearestV;
+        const y = Math.floor(gridY);
+        if (x <= 0 || x >= cols || y < 0 || y >= rows) {
+          setStatus("外边框是固定墙，不需要手动画。");
+          return;
+        }
+        const keyName = verticalKey(x, y);
+        if (verticalWalls.has(keyName)) {
+          verticalWalls.delete(keyName);
+          setStatus(`移除了竖墙 (${x}, ${y})。`);
+        } else {
+          verticalWalls.add(keyName);
+          setStatus(`添加了竖墙 (${x}, ${y})。`);
+        }
+      } else {
+        const x = Math.floor(gridX);
+        const y = nearestH;
+        if (y <= 0 || y >= rows || x < 0 || x >= cols) {
+          setStatus("外边框是固定墙，不需要手动画。");
+          return;
+        }
+        const keyName = horizontalKey(x, y);
+        if (horizontalWalls.has(keyName)) {
+          horizontalWalls.delete(keyName);
+          setStatus(`移除了横墙 (${x}, ${y})。`);
+        } else {
+          horizontalWalls.add(keyName);
+          setStatus(`添加了横墙 (${x}, ${y})。`);
+        }
+      }
+    }
+
+    function placeOnCell(pixelX, pixelY) {
+      const x = Math.floor(pixelX / cellSize);
+      const y = Math.floor(pixelY / cellSize);
+
+      if (x < 0 || x >= cols || y < 0 || y >= rows) return;
+
+      if (tool === "start") {
+        start = { x, y };
+        setStatus(`起点已放到 (${x}, ${y})。`);
+      } else if (tool === "key") {
+        key = { x, y };
+        setStatus(`钥匙已放到 (${x}, ${y})。`);
+      } else if (tool === "door") {
+        door = { x, y };
+        setStatus(`门已放到 (${x}, ${y})。`);
+      } else if (tool === "erase-item") {
+        const before = pickups.length;
+        pickups = pickups.filter((item) => !(item.x === x && item.y === y));
+        setStatus(before === pickups.length ? "这个格子上没有道具。" : `删除了 (${x}, ${y}) 上的道具。`);
+      } else {
+        pickups = pickups.filter((item) => !(item.x === x && item.y === y && item.type === tool));
+        pickups.push({ type: tool, x, y });
+        setStatus(`${toolLabel(tool)} 已放到 (${x}, ${y})。`);
+      }
+
+      syncInfo();
+      draw();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawFloor();
+      drawGrid();
+      drawBoundary();
+      drawPlacedWalls();
+      drawMarkers();
+    }
+
+    function drawFloor() {
+      ctx.fillStyle = "#fbf6ee";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = "rgba(31, 31, 31, 0.12)";
+      ctx.lineWidth = 1;
+
+      for (let x = 1; x < cols; x += 1) {
+        const pos = x * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(pos, 0);
+        ctx.lineTo(pos, rows * cellSize);
+        ctx.stroke();
+      }
+
+      for (let y = 1; y < rows; y += 1) {
+        const pos = y * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(0, pos);
+        ctx.lineTo(cols * cellSize, pos);
+        ctx.stroke();
+      }
+    }
+
+    function drawBoundary() {
+      ctx.strokeStyle = "#202020";
+      ctx.lineWidth = 8;
+      ctx.lineCap = "round";
+      const w = cols * cellSize;
+      const h = rows * cellSize;
+      drawLine(0, 0, w, 0);
+      drawLine(0, h, w, h);
+      drawLine(0, 0, 0, h);
+      drawLine(w, 0, w, h);
+    }
+
+    function drawPlacedWalls() {
+      ctx.strokeStyle = "#202020";
+      ctx.lineWidth = 6;
+      ctx.lineCap = "round";
+
+      horizontalWalls.forEach((keyName) => {
+        const [, xText, yText] = keyName.split(":");
+        const x = Number(xText);
+        const y = Number(yText);
+        drawLine(x * cellSize, y * cellSize, (x + 1) * cellSize, y * cellSize);
+      });
+
+      verticalWalls.forEach((keyName) => {
+        const [, xText, yText] = keyName.split(":");
+        const x = Number(xText);
+        const y = Number(yText);
+        drawLine(x * cellSize, y * cellSize, x * cellSize, (y + 1) * cellSize);
+      });
+    }
+
+    function drawMarkers() {
+      drawCellMarker(start, COLORS.start, "起");
+      drawCellMarker(key, COLORS.key, "钥");
+      drawCellMarker(door, COLORS.door, "门");
+      pickups.forEach((item) => {
+        const label = item.type === "phase" ? "穿" : item.type === "chisel" ? "裂" : "破";
+        drawCellMarker(item, COLORS[item.type], label, 16);
+      });
+    }
+
+    function drawCellMarker(cell, color, label, radius = 18) {
+      const centerX = cell.x * cellSize + cellSize / 2;
+      const centerY = cell.y * cellSize + cellSize / 2;
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.font = `bold ${Math.max(14, cellSize * 0.24)}px Segoe UI`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, centerX, centerY + 1);
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function syncInfo() {
+      startInfo.textContent = `(${start.x}, ${start.y})`;
+      keyInfo.textContent = `(${key.x}, ${key.y})`;
+      doorInfo.textContent = `(${door.x}, ${door.y})`;
+      pickupInfo.textContent = pickups.length === 0
+        ? "无"
+        : pickups.map((item) => `${toolLabel(item.type)}(${item.x},${item.y})`).join("，");
+      wallInfo.textContent = String(horizontalWalls.size + verticalWalls.size);
+    }
+
+    function compressWalls() {
+      const result = [];
+
+      for (let y = 1; y < rows; y += 1) {
+        let x = 0;
+        while (x < cols) {
+          if (!horizontalWalls.has(horizontalKey(x, y))) {
+            x += 1;
+            continue;
+          }
+
+          const startX = x;
+          while (x < cols && horizontalWalls.has(horizontalKey(x, y))) {
+            x += 1;
+          }
+
+          result.push({ x: startX, y, orientation: "h", length: x - startX });
+        }
+      }
+
+      for (let x = 1; x < cols; x += 1) {
+        let y = 0;
+        while (y < rows) {
+          if (!verticalWalls.has(verticalKey(x, y))) {
+            y += 1;
+            continue;
+          }
+
+          const startY = y;
+          while (y < rows && verticalWalls.has(verticalKey(x, y))) {
+            y += 1;
+          }
+
+          result.push({ x, y: startY, orientation: "v", length: y - startY });
+        }
+      }
+
+      return result;
+    }
+
+    function exportLevelCode() {
+      const walls = compressWalls();
+      const pickupsText = pickups
+        .map((item) => `    { type: "${item.type}", x: ${item.x}, y: ${item.y} }`)
+        .join(",\n");
+      const wallsText = walls
+        .map((wall) => `    { x: ${wall.x}, y: ${wall.y}, orientation: "${wall.orientation}", length: ${wall.length} }`)
+        .join(",\n");
+
+      return `{
+  id: ${Number(levelIdInput.value) || 1},
+  title: "${escapeString(levelTitleInput.value)}",
+  goal: "${escapeString(levelGoalInput.value)}",
+  teaching: "${escapeString(levelTeachingInput.value)}",
+  cols: ${cols},
+  rows: ${rows},
+  start: { x: ${start.x}, y: ${start.y} },
+  key: { x: ${key.x}, y: ${key.y} },
+  door: { x: ${door.x}, y: ${door.y} },
+  pickups: [
+${pickupsText || "    "}
+  ],
+  walls: [
+${wallsText || "    "}
+  ]
+}`;
+    }
+
+    function escapeString(value) {
+      return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
+
+    canvas.addEventListener("click", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+
+      if (tool === "wall") {
+        toggleWallAt(x, y);
+        syncInfo();
+        draw();
+        return;
+      }
+
+      placeOnCell(x, y);
+    });
+
+    toolButtons.forEach((button) => {
+      button.addEventListener("click", () => setTool(button.dataset.tool));
+    });
+
+    resizeBtn.addEventListener("click", () => {
+      cols = Math.max(4, Math.min(30, Number(gridColsInput.value) || 12));
+      rows = Math.max(4, Math.min(30, Number(gridRowsInput.value) || 12));
+      gridColsInput.value = cols;
+      gridRowsInput.value = rows;
+      recalcCellSize();
+      resetMap();
+    });
+
+    clearBtn.addEventListener("click", resetMap);
+
+    exportBtn.addEventListener("click", () => {
+      output.value = exportLevelCode();
+      output.focus();
+      output.select();
+      setStatus("代码已经生成好了，可以直接复制进 LEVELS。");
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      if (!output.value.trim()) {
+        output.value = exportLevelCode();
+      }
+
+      try {
+        await navigator.clipboard.writeText(output.value);
+        setStatus("代码已复制到剪贴板。");
+      } catch (error) {
+        output.focus();
+        output.select();
+        setStatus("自动复制失败了，但代码已经选中，你可以手动复制。");
+      }
+    });
+
+    recalcCellSize();
+    syncInfo();
+    draw();
+  </script>
+</body>
+</html>
